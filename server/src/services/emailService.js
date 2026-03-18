@@ -28,7 +28,7 @@ function createTransporter() {
   });
 }
 
-async function sendQREmail(student, eventName, qrBuffer) {
+async function sendQREmail(student, eventName, qrBuffer, isRemind = false) {
   const smtp = getSmtpConfig();
 
   if (!smtp.user || !smtp.pass) {
@@ -40,7 +40,7 @@ async function sendQREmail(student, eventName, qrBuffer) {
   await transport.sendMail({
     from: `"${smtp.fromName}" <${smtp.user}>`,
     to: student.email,
-    subject: `QR Check-in: ${eventName}`,
+    subject: `${isRemind ? '[Nhắc nhở] ' : ''}QR Check-in: ${eventName}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto;">
         <h2>Xin chào ${student.name},</h2>
@@ -69,4 +69,9 @@ async function sendQREmail(student, eventName, qrBuffer) {
   });
 }
 
-module.exports = { sendQREmail };
+// Mark student as email sent
+function markEmailSent(studentId) {
+  db.prepare("UPDATE students SET email_sent_at = datetime('now', '+7 hours') WHERE id = ?").run(studentId);
+}
+
+module.exports = { sendQREmail, markEmailSent };

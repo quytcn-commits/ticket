@@ -19,6 +19,11 @@ db.pragma('foreign_keys = ON');
 const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
 db.exec(schema);
 
+// Migrations: add columns if not exist
+try {
+  db.exec("ALTER TABLE students ADD COLUMN email_sent_at TEXT DEFAULT NULL");
+} catch {}
+
 // Seed default admin
 const seed = require('./seed');
 seed(db);

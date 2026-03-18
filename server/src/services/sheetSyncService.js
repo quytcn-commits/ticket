@@ -180,14 +180,24 @@ async function syncSheet(eventId) {
       const token = generateToken(eventId, studentId, student.student_code);
       db.prepare('UPDATE students SET qr_token = ? WHERE id = ?').run(token, studentId);
 
+      // Check if auto-email is enabled
+      const autoEmail = db.prepare("SELECT value FROM settings WHERE key = ?")
+        .get(`event_${eventId}_auto_email`);
+      const shouldSendEmail = autoEmail ? autoEmail.value === '1' : true;
+
       // Send QR email
-      try {
-        const studentRow = db.prepare('SELECT * FROM students WHERE id = ?').get(studentId);
-        const qrBuffer = await generateQRBuffer(token);
-        await sendQREmail(studentRow, event.name, qrBuffer);
-        console.log(`[SheetSync] ✓ ${student.name} (${student.email}) → QR sent`);
-      } catch (emailErr) {
-        console.log(`[SheetSync] ✓ ${student.name} registered, email failed: ${emailErr.message}`);
+      if (shouldSendEmail) {
+        try {
+          const studentRow = db.prepare('SELECT * FROM students WHERE id = ?').get(studentId);
+          const qrBuffer = await generateQRBuffer(token);
+          await sendQREmail(studentRow, event.name, qrBuffer);
+          db.prepare("UPDATE students SET email_sent_at = datetime('now', '+7 hours') WHERE id = ?").run(studentId);
+          console.log(`[SheetSync] ✓ ${student.name} (${student.email}) → QR sent`);
+        } catch (emailErr) {
+          console.log(`[SheetSync] ✓ ${student.name} registered, email failed: ${emailErr.message}`);
+        }
+      } else {
+        console.log(`[SheetSync] ✓ ${student.name} registered (auto-email OFF)`);
       }
 
       synced++;

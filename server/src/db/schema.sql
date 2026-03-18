@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS students (
   email         TEXT,
   school        TEXT,
   qr_token      TEXT    NOT NULL UNIQUE,
+  email_sent_at TEXT    DEFAULT NULL,
   created_at    TEXT    DEFAULT (datetime('now', '+7 hours')),
   UNIQUE(event_id, student_code)
 );

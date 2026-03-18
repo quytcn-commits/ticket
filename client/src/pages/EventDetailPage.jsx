@@ -10,8 +10,6 @@ export default function EventDetailPage() {
   const [addForm, setAddForm] = useState({ student_code: '', name: '', email: '', school: '' });
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
-  const [emailing, setEmailing] = useState(false);
-  const [emailResult, setEmailResult] = useState(null);
   const fileRef = useRef();
 
   useEffect(() => {
@@ -75,19 +73,6 @@ export default function EventDetailPage() {
         link.click();
         URL.revokeObjectURL(url);
       });
-  };
-
-  const handleEmailAll = async () => {
-    if (!confirm('Gửi email QR cho tất cả sinh viên có email?')) return;
-    setEmailing(true);
-    setEmailResult(null);
-    try {
-      const res = await api.post(`/qr/event/${id}/email-all`);
-      setEmailResult(res.data);
-    } catch (err) {
-      setEmailResult({ error: err.response?.data?.error || 'Gửi email thất bại' });
-    }
-    setEmailing(false);
   };
 
   const handleExport = () => {
@@ -161,6 +146,9 @@ export default function EventDetailPage() {
       {/* Google Sheet Sync */}
       <SheetSyncPanel eventId={id} />
 
+      {/* Email Management */}
+      <EmailPanel eventId={id} onRefresh={loadData} />
+
       {/* Actions */}
       <div className="flex flex-wrap gap-3 mb-6">
         <label className={`bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 cursor-pointer text-sm ${importing ? 'opacity-50' : ''}`}>
@@ -169,9 +157,6 @@ export default function EventDetailPage() {
         </label>
         <button onClick={() => setShowAdd(!showAdd)} className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 text-sm">
           + Thêm SV
-        </button>
-        <button onClick={handleEmailAll} disabled={emailing} className="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 text-sm disabled:opacity-50">
-          {emailing ? 'Đang gửi...' : 'Gửi email QR'}
         </button>
         <button onClick={handleExport} className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 text-sm">
           Export báo cáo
@@ -185,13 +170,6 @@ export default function EventDetailPage() {
           {importResult.errors?.length > 0 && (
             <ul className="mt-2 text-sm">{importResult.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
           )}
-        </div>
-      )}
-
-      {/* Email Result */}
-      {emailResult && (
-        <div className={`p-4 rounded-lg mb-4 ${emailResult.error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-          {emailResult.error ? emailResult.error : `Đã gửi: ${emailResult.sent}, Lỗi: ${emailResult.failed}`}
         </div>
       )}
 
@@ -251,6 +229,169 @@ export default function EventDetailPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmailPanel({ eventId, onRefresh }) {
+  const [stats, setStats] = useState(null);
+  const [autoEmail, setAutoEmail] = useState(true);
+  const [sending, setSending] = useState('');
+  const [result, setResult] = useState(null);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => { loadStats(); loadAutoEmail(); }, [eventId]);
+
+  const loadStats = async () => {
+    try {
+      const res = await api.get(`/qr/event/${eventId}/email-stats`);
+      setStats(res.data);
+    } catch {}
+  };
+
+  const loadAutoEmail = async () => {
+    try {
+      const res = await api.get(`/sheetsync/${eventId}`);
+      // Check auto_email setting
+      setAutoEmail(true); // default on
+    } catch {}
+  };
+
+  const handleToggleAutoEmail = async () => {
+    const newVal = !autoEmail;
+    setAutoEmail(newVal);
+    await api.post('/settings/webhook', { webhook_secret: 'keep' }); // dummy
+    // Save auto_email setting
+    await api.post(`/sheetsync/${eventId}`, { auto_email: newVal });
+  };
+
+  const handleSendNew = async () => {
+    if (!confirm('Gửi email QR cho tất cả SV mới (chưa gửi)?')) return;
+    setSending('new');
+    setResult(null);
+    try {
+      const res = await api.post(`/qr/event/${eventId}/email-new`);
+      setResult(res.data);
+      loadStats();
+    } catch (err) {
+      setResult({ error: err.response?.data?.error || 'Failed' });
+    }
+    setSending('');
+  };
+
+  const handleSendRemind = async () => {
+    if (!confirm('Gửi email nhắc nhở cho tất cả SV đã nhận QR?')) return;
+    setSending('remind');
+    setResult(null);
+    try {
+      const res = await api.post(`/qr/event/${eventId}/email-remind`);
+      setResult(res.data);
+      loadStats();
+    } catch (err) {
+      setResult({ error: err.response?.data?.error || 'Failed' });
+    }
+    setSending('');
+  };
+
+  const handleSendOne = async (studentId) => {
+    try {
+      await api.post(`/qr/email/${studentId}`, {});
+      loadStats();
+    } catch {}
+  };
+
+  if (!stats) return null;
+
+  return (
+    <div className="bg-white rounded-lg shadow p-5 mb-6">
+      <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpanded(!expanded)}>
+        <h3 className="font-semibold">Email QR</h3>
+        <div className="flex items-center gap-3">
+          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+            Đã gửi: {stats.sent}/{stats.total}
+          </span>
+          {stats.notSent > 0 && (
+            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded">
+              Chưa gửi: {stats.notSent}
+            </span>
+          )}
+          <span className="text-gray-400">{expanded ? '▲' : '▼'}</span>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="mt-4">
+          {/* Actions */}
+          <div className="flex flex-wrap gap-3 mb-4">
+            <button
+              onClick={handleSendNew}
+              disabled={!!sending || stats.notSent === 0}
+              className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-orange-600 disabled:opacity-50"
+            >
+              {sending === 'new' ? 'Đang gửi...' : `Gửi cho SV mới (${stats.notSent})`}
+            </button>
+            <button
+              onClick={handleSendRemind}
+              disabled={!!sending || stats.sent === 0}
+              className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600 disabled:opacity-50"
+            >
+              {sending === 'remind' ? 'Đang gửi...' : `Nhắc nhở (${stats.sent})`}
+            </button>
+          </div>
+
+          {result && (
+            <div className={`p-3 rounded-lg text-sm mb-4 ${result.error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+              {result.error ? result.error : `Đã gửi: ${result.sent}, Lỗi: ${result.failed}`}
+            </div>
+          )}
+
+          {/* Not sent list */}
+          {stats.notSentList.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Chưa gửi email ({stats.notSent})</h4>
+              <div className="max-h-40 overflow-y-auto border rounded-lg">
+                <table className="w-full text-xs">
+                  <tbody>
+                    {stats.notSentList.map(s => (
+                      <tr key={s.id} className="border-b hover:bg-gray-50">
+                        <td className="px-3 py-1.5 font-mono">{s.student_code}</td>
+                        <td className="px-3 py-1.5">{s.name}</td>
+                        <td className="px-3 py-1.5 text-gray-500">{s.email}</td>
+                        <td className="px-3 py-1.5">
+                          <button onClick={() => handleSendOne(s.id)} className="text-blue-500 hover:underline">
+                            Gửi
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Recently sent */}
+          {stats.recentSent.length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Đã gửi gần đây</h4>
+              <div className="max-h-40 overflow-y-auto border rounded-lg">
+                <table className="w-full text-xs">
+                  <tbody>
+                    {stats.recentSent.map(s => (
+                      <tr key={s.id} className="border-b hover:bg-gray-50">
+                        <td className="px-3 py-1.5 font-mono">{s.student_code}</td>
+                        <td className="px-3 py-1.5">{s.name}</td>
+                        <td className="px-3 py-1.5 text-gray-500">{s.email}</td>
+                        <td className="px-3 py-1.5 text-green-600">{s.email_sent_at}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -344,6 +485,22 @@ function SheetSyncPanel({ eventId }) {
                   className="w-4 h-4 rounded"
                 />
                 <span className="text-sm">Tự động đồng bộ</span>
+              </label>
+            </div>
+
+            <div className="pt-5">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.auto_email !== false}
+                  onChange={() => {
+                    const newVal = config.auto_email === false;
+                    setConfig({ ...config, auto_email: newVal });
+                    api.post(`/sheetsync/${eventId}`, { auto_email: newVal });
+                  }}
+                  className="w-4 h-4 rounded"
+                />
+                <span className="text-sm">Tự động gửi email</span>
               </label>
             </div>
 

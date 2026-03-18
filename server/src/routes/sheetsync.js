@@ -17,10 +17,14 @@ router.get('/:eventId', auth, (req, res) => {
   const lastSync = db.prepare("SELECT value FROM settings WHERE key = ?")
     .get(`event_${eventId}_last_sync`);
 
+  const autoEmail = db.prepare("SELECT value FROM settings WHERE key = ?")
+    .get(`event_${eventId}_auto_email`);
+
   res.json({
     sheet_url: sheetUrl?.value || '',
     sync_interval: parseInt(interval?.value) || 2,
     auto_sync: autoSync?.value === '1',
+    auto_email: autoEmail ? autoEmail.value === '1' : true,
     last_sync: lastSync?.value || null,
   });
 });
@@ -28,7 +32,7 @@ router.get('/:eventId', auth, (req, res) => {
 // Save sync config
 router.post('/:eventId', auth, (req, res) => {
   const eventId = req.params.eventId;
-  const { sheet_url, sync_interval, auto_sync } = req.body;
+  const { sheet_url, sync_interval, auto_sync, auto_email } = req.body;
 
   const upsert = db.prepare(
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?'
@@ -45,6 +49,9 @@ router.post('/:eventId', auth, (req, res) => {
     if (auto_sync) {
       startAutoSync(sync_interval || 2);
     }
+  }
+  if (auto_email !== undefined) {
+    upsert.run(`event_${eventId}_auto_email`, auto_email ? '1' : '0', auto_email ? '1' : '0');
   }
 
   res.json({ success: true });

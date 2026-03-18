@@ -58,16 +58,24 @@ router.post('/register', async (req, res) => {
   const token = generateToken(event_id, studentId, student_code);
   db.prepare('UPDATE students SET qr_token = ? WHERE id = ?').run(token, studentId);
 
-  // 6. Generate QR + Send email
+  // 6. Generate QR + Send email (if auto-email enabled)
   let emailSent = false;
   let emailError = null;
-  try {
-    const student = db.prepare('SELECT * FROM students WHERE id = ?').get(studentId);
-    const qrBuffer = await generateQRBuffer(token);
-    await sendQREmail(student, event.name, qrBuffer);
-    emailSent = true;
-  } catch (err) {
-    emailError = err.message;
+
+  const autoEmail = db.prepare("SELECT value FROM settings WHERE key = ?")
+    .get(`event_${event_id}_auto_email`);
+  const shouldSendEmail = autoEmail ? autoEmail.value === '1' : true;
+
+  if (shouldSendEmail) {
+    try {
+      const student = db.prepare('SELECT * FROM students WHERE id = ?').get(studentId);
+      const qrBuffer = await generateQRBuffer(token);
+      await sendQREmail(student, event.name, qrBuffer);
+      db.prepare("UPDATE students SET email_sent_at = datetime('now', '+7 hours') WHERE id = ?").run(studentId);
+      emailSent = true;
+    } catch (err) {
+      emailError = err.message;
+    }
   }
 
   console.log(`[Webhook] New registration: ${name} (${student_code}) → email ${emailSent ? 'sent' : 'failed'}`);
