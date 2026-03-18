@@ -130,4 +130,23 @@ router.get('/smtp/presets', auth, (req, res) => {
   res.json(PRESETS);
 });
 
+// ===== Webhook Settings =====
+
+// Get webhook secret
+router.get('/webhook', auth, (req, res) => {
+  const row = db.prepare("SELECT value FROM settings WHERE key = 'webhook_secret'").get();
+  res.json({ webhook_secret: row?.value || '' });
+});
+
+// Save webhook secret
+router.post('/webhook', auth, (req, res) => {
+  const { webhook_secret } = req.body;
+  if (!webhook_secret) {
+    return res.status(400).json({ error: 'webhook_secret required' });
+  }
+  db.prepare("INSERT INTO settings (key, value) VALUES ('webhook_secret', ?) ON CONFLICT(key) DO UPDATE SET value = ?")
+    .run(webhook_secret, webhook_secret);
+  res.json({ success: true });
+});
+
 module.exports = router;

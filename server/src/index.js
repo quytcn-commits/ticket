@@ -18,6 +18,7 @@ app.use('/api/events', require('./routes/students'));
 app.use('/api/staffs', require('./routes/staffs'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/qr', require('./routes/qr'));
+app.use('/api/webhook', require('./routes/webhook'));
 app.use('/api/checkin', require('./routes/checkin'));
 app.use('/api/reports', require('./routes/reports'));
 
