@@ -1,8 +1,8 @@
 # ===== Stage 1: Build client =====
 FROM node:20-alpine AS client-build
 WORKDIR /app/client
-COPY client/package.json client/package-lock.json* ./
-RUN npm ci --ignore-scripts
+COPY client/package.json ./
+RUN npm install
 COPY client/ ./
 RUN npm run build
 
@@ -11,8 +11,8 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Install only server dependencies
-COPY server/package.json server/package-lock.json* ./
-RUN npm ci --omit=dev && npm cache clean --force
+COPY server/package.json ./
+RUN npm install --omit=dev && npm cache clean --force
 
 # Copy server source
 COPY server/src/ ./src/
