@@ -149,4 +149,45 @@ router.post('/webhook', auth, (req, res) => {
   res.json({ success: true });
 });
 
+// ===== Email Template Settings =====
+const { getTemplate, renderTemplate, DEFAULT_QR_TEMPLATE, DEFAULT_REMIND_TEMPLATE } = require('../services/emailService');
+
+// Get email template for event
+router.get('/email-template/:eventId/:type', auth, (req, res) => {
+  const template = getTemplate(req.params.eventId, req.params.type);
+  res.json(template);
+});
+
+// Save email template for event
+router.post('/email-template/:eventId/:type', auth, (req, res) => {
+  const { subject, body } = req.body;
+  const key = `event_${req.params.eventId}_email_${req.params.type}`;
+  const value = JSON.stringify({ subject, body });
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?')
+    .run(key, value, value);
+  res.json({ success: true });
+});
+
+// Reset template to default
+router.delete('/email-template/:eventId/:type', auth, (req, res) => {
+  const key = `event_${req.params.eventId}_email_${req.params.type}`;
+  db.prepare('DELETE FROM settings WHERE key = ?').run(key);
+  res.json({ success: true });
+});
+
+// Preview template with sample data
+router.post('/email-template/preview', auth, (req, res) => {
+  const { subject, body } = req.body;
+  const rendered = renderTemplate({ subject, body }, {
+    studentName: 'Nguyễn Văn An',
+    studentCode: 'SV2021001',
+    email: 'an.nv@gmail.com',
+    school: 'ĐH Sư phạm Kỹ thuật',
+    eventName: 'Ngày hội Công nghệ 2026',
+    eventDate: '2026-03-20',
+    eventLocation: 'Hội trường A',
+  });
+  res.json(rendered);
+});
+
 module.exports = router;

@@ -339,6 +339,12 @@ function EmailPanel({ eventId, onRefresh }) {
             >
               {sending === 'remind' ? 'Đang gửi...' : `Nhắc nhở (${stats.sent})`}
             </button>
+            <Link
+              to={`/events/${eventId}/email-template`}
+              className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
+            >
+              Chỉnh template
+            </Link>
           </div>
 
           {result && (

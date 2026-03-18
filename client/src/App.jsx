@@ -7,6 +7,7 @@ import EventDetailPage from './pages/EventDetailPage';
 import DashboardPage from './pages/DashboardPage';
 import StaffsPage from './pages/StaffsPage';
 import SettingsPage from './pages/SettingsPage';
+import EmailTemplatePage from './pages/EmailTemplatePage';
 import ScannerPage from './pages/ScannerPage';
 
 function ProtectedRoute({ children }) {
@@ -24,6 +25,7 @@ function AppRoutes() {
         <Route path="events" element={<EventsPage />} />
         <Route path="events/:id" element={<EventDetailPage />} />
         <Route path="events/:id/dashboard" element={<DashboardPage />} />
+        <Route path="events/:id/email-template" element={<EmailTemplatePage />} />
         <Route path="staffs" element={<StaffsPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
