@@ -8,6 +8,8 @@ RUN npm run build
 
 # ===== Stage 2: Production server =====
 FROM node:20-alpine
+RUN apk add --no-cache tzdata
+ENV TZ=Asia/Ho_Chi_Minh
 WORKDIR /app
 
 # Install only server dependencies

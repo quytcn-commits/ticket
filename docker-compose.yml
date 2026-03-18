@@ -21,6 +21,9 @@ services:
       - LETSENCRYPT_HOST=ticket.luckydraw.work
       - LETSENCRYPT_EMAIL=admin@luckydraw.work
 
+      # === Timezone ===
+      - TZ=Asia/Ho_Chi_Minh
+
       # === App config ===
       - NODE_ENV=production
       - PORT=3000

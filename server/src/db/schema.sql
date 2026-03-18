@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS admins (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   username    TEXT    NOT NULL UNIQUE,
   password    TEXT    NOT NULL,
-  created_at  TEXT    DEFAULT (datetime('now'))
+  created_at  TEXT    DEFAULT (datetime('now', '+7 hours'))
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS events (
   description TEXT,
   location    TEXT,
   event_date  TEXT    NOT NULL,
-  created_at  TEXT    DEFAULT (datetime('now'))
+  created_at  TEXT    DEFAULT (datetime('now', '+7 hours'))
 );
 
 CREATE TABLE IF NOT EXISTS students (
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS students (
   email         TEXT,
   school        TEXT,
   qr_token      TEXT    NOT NULL UNIQUE,
-  created_at    TEXT    DEFAULT (datetime('now')),
+  created_at    TEXT    DEFAULT (datetime('now', '+7 hours')),
   UNIQUE(event_id, student_code)
 );
 
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS staffs (
   name        TEXT    NOT NULL,
   pin         TEXT    NOT NULL,
   active      INTEGER DEFAULT 1,
-  created_at  TEXT    DEFAULT (datetime('now'))
+  created_at  TEXT    DEFAULT (datetime('now', '+7 hours'))
 );
 
 CREATE TABLE IF NOT EXISTS staff_events (
@@ -52,6 +52,6 @@ CREATE TABLE IF NOT EXISTS checkins (
   student_id  INTEGER NOT NULL REFERENCES students(id),
   event_id    INTEGER NOT NULL REFERENCES events(id),
   staff_id    INTEGER REFERENCES staffs(id),
-  checked_at  TEXT    DEFAULT (datetime('now')),
+  checked_at  TEXT    DEFAULT (datetime('now', '+7 hours')),
   UNIQUE(student_id, event_id)
 );
