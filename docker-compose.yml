@@ -1,0 +1,40 @@
+# =============================================
+#  QR Check-in - ticket.luckydraw.work
+#
+#  Yêu cầu: shared proxy đang chạy (deploy/proxy)
+#  Chạy: docker compose up -d --build
+# =============================================
+
+services:
+  app:
+    build: .
+    container_name: qr-checkin
+    restart: unless-stopped
+    expose:
+      - "3000"
+    volumes:
+      - checkin-data:/app/data
+    environment:
+      # === Domain config (nginx-proxy auto-detect) ===
+      - VIRTUAL_HOST=ticket.luckydraw.work
+      - VIRTUAL_PORT=3000
+      - LETSENCRYPT_HOST=ticket.luckydraw.work
+      - LETSENCRYPT_EMAIL=admin@luckydraw.work
+
+      # === App config ===
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_PATH=/app/data/checkin.db
+      - JWT_SECRET=${JWT_SECRET}
+      - HMAC_SECRET=${HMAC_SECRET}
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASS=${ADMIN_PASS:-admin123}
+    networks:
+      - proxy-network
+
+volumes:
+  checkin-data:
+
+networks:
+  proxy-network:
+    external: true

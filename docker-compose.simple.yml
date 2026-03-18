@@ -1,0 +1,24 @@
+# Docker Compose đơn giản - KHÔNG có Nginx/SSL
+# Dùng để test nhanh trên VPS
+# Chạy: docker compose -f docker-compose.simple.yml up -d --build
+
+services:
+  app:
+    build: .
+    container_name: qr-checkin
+    restart: unless-stopped
+    ports:
+      - "80:3000"
+    volumes:
+      - checkin-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - JWT_SECRET=${JWT_SECRET:-change-me-jwt-secret-64-chars-long-random-string-here}
+      - HMAC_SECRET=${HMAC_SECRET:-change-me-hmac-secret-64-chars-long-random-string-here}
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASS=${ADMIN_PASS:-admin123}
+      - DB_PATH=/app/data/checkin.db
+
+volumes:
+  checkin-data:

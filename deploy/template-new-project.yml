@@ -1,0 +1,47 @@
+# =============================================
+#  TEMPLATE: Thêm project mới vào VPS
+#
+#  Copy file này vào project mới, sửa 3 chỗ:
+#    1. VIRTUAL_HOST  → domain mới
+#    2. LETSENCRYPT_HOST → domain mới
+#    3. container_name → tên mới
+#
+#  Chạy: docker compose up -d --build
+#  → Tự có SSL, tự connect vào proxy chung
+# =============================================
+
+services:
+  app:
+    build: .
+    container_name: NEW_PROJECT_NAME        # ← Sửa tên
+    restart: unless-stopped
+    expose:
+      - "3000"                              # ← Port app chạy
+    environment:
+      - VIRTUAL_HOST=new.luckydraw.work     # ← Sửa domain
+      - VIRTUAL_PORT=3000
+      - LETSENCRYPT_HOST=new.luckydraw.work # ← Sửa domain
+      - LETSENCRYPT_EMAIL=admin@luckydraw.work
+    networks:
+      - proxy-network
+
+networks:
+  proxy-network:
+    external: true
+
+# =============================================
+#  Ví dụ thêm project thứ 2:
+#
+#  /opt/apps/luckydraw/docker-compose.yml:
+#    container_name: luckydraw-app
+#    VIRTUAL_HOST=luckydraw.work
+#    LETSENCRYPT_HOST=luckydraw.work
+#
+#  /opt/apps/api-service/docker-compose.yml:
+#    container_name: api-service
+#    VIRTUAL_HOST=api.luckydraw.work
+#    LETSENCRYPT_HOST=api.luckydraw.work
+#
+#  Chỉ cần: cd /opt/apps/xxx && docker compose up -d
+#  Proxy tự detect container mới → route domain → issue SSL
+# =============================================

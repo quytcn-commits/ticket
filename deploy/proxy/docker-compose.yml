@@ -1,0 +1,57 @@
+# =============================================
+#  SHARED REVERSE PROXY - Chạy 1 lần trên VPS
+#  Quản lý tất cả domain + auto SSL
+#
+#  Chạy: docker compose up -d
+#  Sau đó mỗi project chỉ cần set VIRTUAL_HOST
+#  và LETSENCRYPT_HOST là tự có SSL
+# =============================================
+
+services:
+  nginx-proxy:
+    image: nginxproxy/nginx-proxy:1.6
+    container_name: nginx-proxy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - proxy-certs:/etc/nginx/certs:ro
+      - proxy-vhost:/etc/nginx/vhost.d
+      - proxy-html:/usr/share/nginx/html
+      - proxy-conf:/etc/nginx/conf.d
+    environment:
+      - DEFAULT_HOST=ticket.luckydraw.work
+    networks:
+      - proxy-network
+
+  acme-companion:
+    image: nginxproxy/acme-companion:2.4
+    container_name: nginx-proxy-acme
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - proxy-certs:/etc/nginx/certs:rw
+      - proxy-vhost:/etc/nginx/vhost.d
+      - proxy-html:/usr/share/nginx/html
+      - proxy-acme:/etc/acme.sh
+    environment:
+      - NGINX_PROXY_CONTAINER=nginx-proxy
+      - DEFAULT_EMAIL=admin@luckydraw.work
+    depends_on:
+      - nginx-proxy
+    networks:
+      - proxy-network
+
+volumes:
+  proxy-certs:
+  proxy-vhost:
+  proxy-html:
+  proxy-conf:
+  proxy-acme:
+
+networks:
+  proxy-network:
+    name: proxy-network
+    driver: bridge
