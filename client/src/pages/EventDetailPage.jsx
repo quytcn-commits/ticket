@@ -8,6 +8,8 @@ export default function EventDetailPage() {
   const [students, setStudents] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [addForm, setAddForm] = useState({ student_code: '', name: '', email: '', school: '' });
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [categoryStats, setCategoryStats] = useState([]);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const fileRef = useRef();
@@ -22,7 +24,8 @@ export default function EventDetailPage() {
       api.get(`/events/${id}/students`),
     ]);
     setEvent(evRes.data);
-    setStudents(stRes.data);
+    setStudents(stRes.data.students || stRes.data);
+    setCategoryStats(stRes.data.categoryStats || []);
   };
 
   const handleImport = async (e) => {
@@ -187,41 +190,97 @@ export default function EventDetailPage() {
         </form>
       )}
 
-      {/* Student Table */}
+      {/* Category Tabs */}
       {students.length > 0 && (
+        <div className="mb-4">
+          <div className="flex gap-2 flex-wrap">
+            {[
+              { key: 'all', label: 'Tất cả', color: 'gray', count: students.length },
+              { key: 'vanhoa', label: 'ĐH Văn hóa', color: 'blue', count: categoryStats.find(c => c.category === 'vanhoa')?.count || 0 },
+              { key: 'fulbright', label: 'ĐH Fulbright', color: 'purple', count: categoryStats.find(c => c.category === 'fulbright')?.count || 0 },
+              { key: 'guest', label: 'Khách mời', color: 'orange', count: categoryStats.find(c => c.category === 'guest')?.count || 0 },
+            ].filter(t => t.key === 'all' || t.count > 0).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setCategoryFilter(tab.key)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  categoryFilter === tab.key
+                    ? `bg-${tab.color}-600 text-white`
+                    : `bg-${tab.color}-50 text-${tab.color}-600 hover:bg-${tab.color}-100`
+                }`}
+                style={categoryFilter === tab.key ? {
+                  backgroundColor: tab.color === 'gray' ? '#4b5563' : tab.color === 'blue' ? '#2563eb' : tab.color === 'purple' ? '#9333ea' : '#ea580c',
+                  color: 'white'
+                } : {}}
+              >
+                {tab.label} ({tab.count})
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Student Table */}
+      {students.length > 0 && (() => {
+        const filtered = categoryFilter === 'all' ? students : students.filter(s => s.category === categoryFilter);
+        const isVanhoa = categoryFilter === 'vanhoa';
+        const isFulbright = categoryFilter === 'fulbright';
+        const isGuest = categoryFilter === 'guest';
+
+        return (
         <div className="bg-white rounded-lg shadow overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left">#</th>
-                <th className="px-4 py-3 text-left">Mã SV</th>
-                <th className="px-4 py-3 text-left">Họ tên</th>
-                <th className="px-4 py-3 text-left">Email</th>
-                <th className="px-4 py-3 text-left">Trường</th>
-                <th className="px-4 py-3 text-left">Trạng thái</th>
-                <th className="px-4 py-3 text-left">Thao tác</th>
+                <th className="px-3 py-3 text-left">#</th>
+                {categoryFilter === 'all' && <th className="px-3 py-3 text-left">Nhóm</th>}
+                <th className="px-3 py-3 text-left">Họ tên</th>
+                <th className="px-3 py-3 text-left">Email</th>
+                <th className="px-3 py-3 text-left">SĐT</th>
+                {(isVanhoa || categoryFilter === 'all') && <th className="px-3 py-3 text-left">MSSV</th>}
+                {(isVanhoa) && <th className="px-3 py-3 text-left">Chức vụ</th>}
+                {(isFulbright) && <th className="px-3 py-3 text-left">Quan hệ</th>}
+                {(isGuest) && <th className="px-3 py-3 text-left">Chức vụ</th>}
+                {(isGuest) && <th className="px-3 py-3 text-left">Cơ quan</th>}
+                <th className="px-3 py-3 text-left">Trạng thái</th>
+                <th className="px-3 py-3 text-left">Thao tác</th>
               </tr>
             </thead>
             <tbody>
-              {students.map((s, i) => (
+              {filtered.map((s, i) => (
                 <tr key={s.id} className="border-t hover:bg-gray-50">
-                  <td className="px-4 py-3">{i + 1}</td>
-                  <td className="px-4 py-3 font-mono">{s.student_code}</td>
-                  <td className="px-4 py-3 font-medium">{s.name}</td>
-                  <td className="px-4 py-3 text-gray-500">{s.email}</td>
-                  <td className="px-4 py-3">{s.school}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-2.5">{i + 1}</td>
+                  {categoryFilter === 'all' && (
+                    <td className="px-3 py-2.5">
+                      <span className={`text-xs px-2 py-0.5 rounded ${
+                        s.category === 'vanhoa' ? 'bg-blue-100 text-blue-700' :
+                        s.category === 'fulbright' ? 'bg-purple-100 text-purple-700' :
+                        'bg-orange-100 text-orange-700'
+                      }`}>
+                        {s.category === 'vanhoa' ? 'Văn hóa' : s.category === 'fulbright' ? 'Fulbright' : 'Khách'}
+                      </span>
+                    </td>
+                  )}
+                  <td className="px-3 py-2.5 font-medium">{s.name}</td>
+                  <td className="px-3 py-2.5 text-gray-500 text-xs">{s.email}</td>
+                  <td className="px-3 py-2.5 text-gray-500">{s.phone}</td>
+                  {(isVanhoa || categoryFilter === 'all') && <td className="px-3 py-2.5 font-mono text-xs">{s.mssv || s.student_code}</td>}
+                  {(isVanhoa) && <td className="px-3 py-2.5">{s.position}</td>}
+                  {(isFulbright) && <td className="px-3 py-2.5">{s.relationship}</td>}
+                  {(isGuest) && <td className="px-3 py-2.5">{s.position}</td>}
+                  {(isGuest) && <td className="px-3 py-2.5">{s.organization}</td>}
+                  <td className="px-3 py-2.5">
                     {s.checked_at ? (
-                      <span className="text-green-600 font-medium">Check-in {s.checked_at}</span>
+                      <span className="text-green-600 text-xs font-medium">Check-in {s.checked_at}</span>
                     ) : (
-                      <span className="text-gray-400">Chưa check-in</span>
+                      <span className="text-gray-400 text-xs">Chưa</span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
-                    <button onClick={() => handleDownloadQR(s.id, s.student_code)} className="text-blue-500 hover:underline mr-3">
-                      Tải QR
+                  <td className="px-3 py-2.5">
+                    <button onClick={() => handleDownloadQR(s.id, s.student_code)} className="text-blue-500 hover:underline mr-2 text-xs">
+                      QR
                     </button>
-                    <button onClick={() => handleDelete(s.id)} className="text-red-400 hover:text-red-600">
+                    <button onClick={() => handleDelete(s.id)} className="text-red-400 hover:text-red-600 text-xs">
                       Xóa
                     </button>
                   </td>
@@ -230,7 +289,8 @@ export default function EventDetailPage() {
             </tbody>
           </table>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

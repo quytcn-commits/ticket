@@ -82,49 +82,63 @@ function parseCSV(csv) {
 
 /**
  * Extract student info from a row based on "đơn vị" (column B)
- * Adapted to the specific Google Sheet structure
+ * Returns full data for all 3 branches
  */
 function extractStudent(row) {
   const donVi = (row[1] || '').trim();
-  let name = '', email = '', phone = '', school = donVi, studentCode = '';
+  const result = {
+    name: '', email: '', phone: '', school: '',
+    category: 'guest', student_code: '',
+    position: '', organization: '', mssv: '',
+    program: '', image_consent: 0, relationship: '',
+  };
 
   if (donVi.includes('Fulbright')) {
-    name = row[2] || '';
-    email = row[3] || '';
-    phone = row[4] || '';
-    school = 'ĐH Fulbright Việt Nam';
-    studentCode = email ? email.split('@')[0] : '';
+    result.category = 'fulbright';
+    result.name = row[2] || '';
+    result.email = row[3] || '';
+    result.phone = row[4] || '';
+    result.relationship = row[5] || '';   // Quan hệ với Fulbright
+    result.program = row[6] || '';        // Phần tham dự
+    result.image_consent = (row[7] || '').includes('Có') ? 1 : 0;
+    result.school = 'ĐH Fulbright Việt Nam';
+    result.student_code = result.email ? result.email.split('@')[0] : '';
   } else if (donVi.includes('Văn hóa')) {
-    name = row[8] || '';
-    email = row[9] || '';
-    phone = row[10] || '';
-    school = 'ĐH Văn hóa TPHCM';
-    studentCode = row[12] || '';
-    if (!studentCode || studentCode === 'Không có') {
-      studentCode = email ? email.split('@')[0] : '';
-    }
+    result.category = 'vanhoa';
+    result.name = row[8] || '';
+    result.email = row[9] || '';
+    result.phone = row[10] || '';
+    result.position = row[11] || '';      // Chức vụ tại ĐH Văn hóa
+    result.mssv = row[12] || '';          // MSSV
+    result.program = row[13] || '';
+    result.image_consent = (row[14] || '').includes('Có') ? 1 : 0;
+    result.school = 'ĐH Văn hóa TPHCM';
+    result.student_code = result.mssv && result.mssv !== 'Không có'
+      ? result.mssv
+      : (result.email ? result.email.split('@')[0] : '');
   } else {
-    // Khác
-    name = row[15] || '';
-    email = row[16] || '';
-    phone = row[17] || '';
-    const chucVu = row[20] || '';
-    const coQuan = row[21] || '';
-    school = coQuan || chucVu || 'Khác';
-    studentCode = email ? email.split('@')[0] : '';
+    result.category = 'guest';
+    result.name = row[15] || '';
+    result.email = row[16] || '';
+    result.phone = row[17] || '';
+    result.program = row[18] || '';
+    result.image_consent = (row[19] || '').includes('Có') ? 1 : 0;
+    result.position = row[20] || '';      // Chức vụ
+    result.organization = row[21] || '';  // Cơ quan
+    result.school = result.organization || result.position || 'Khách mời';
+    result.student_code = result.email ? result.email.split('@')[0] : '';
   }
 
-  // Fallback email from last column
-  if (!email && row[22]) email = row[22];
+  // Fallback email
+  if (!result.email && row[22]) result.email = row[22];
 
-  name = name.trim();
-  email = email.trim();
-  studentCode = studentCode.trim();
-  school = school.trim();
+  // Trim all
+  for (const key of Object.keys(result)) {
+    if (typeof result[key] === 'string') result[key] = result[key].trim();
+  }
 
-  if (!name || !email || !studentCode) return null;
-
-  return { name, email, phone: (phone || '').trim(), school, student_code: studentCode };
+  if (!result.name || !result.email || !result.student_code) return null;
+  return result;
 }
 
 /**
@@ -171,10 +185,15 @@ async function syncSheet(eventId) {
 
       if (existing) { skipped++; continue; }
 
-      // Insert student
-      const result = db.prepare(
-        'INSERT INTO students (event_id, student_code, name, email, school, qr_token) VALUES (?, ?, ?, ?, ?, ?)'
-      ).run(eventId, student.student_code, student.name, student.email, student.school, 'temp');
+      // Insert student with full data
+      const result = db.prepare(`
+        INSERT INTO students (event_id, student_code, name, email, phone, school, category, position, organization, mssv, program, image_consent, relationship, qr_token)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        eventId, student.student_code, student.name, student.email, student.phone,
+        student.school, student.category, student.position, student.organization,
+        student.mssv, student.program, student.image_consent, student.relationship, 'temp'
+      );
 
       const studentId = result.lastInsertRowid;
       const token = generateToken(eventId, studentId, student.student_code);

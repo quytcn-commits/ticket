@@ -8,16 +8,33 @@ const { generateToken } = require('../services/qrService');
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// List students for an event
+// List students for an event (with optional category filter)
 router.get('/:eventId/students', auth, (req, res) => {
-  const students = db.prepare(`
+  const { category } = req.query;
+  let sql = `
     SELECT s.*, c.checked_at
     FROM students s
     LEFT JOIN checkins c ON c.student_id = s.id AND c.event_id = s.event_id
     WHERE s.event_id = ?
-    ORDER BY s.name ASC
+  `;
+  const params = [req.params.eventId];
+
+  if (category && category !== 'all') {
+    sql += ' AND s.category = ?';
+    params.push(category);
+  }
+  sql += ' ORDER BY s.category, s.name ASC';
+
+  const students = db.prepare(sql).all(...params);
+
+  // Category stats
+  const stats = db.prepare(`
+    SELECT category, COUNT(*) as count
+    FROM students WHERE event_id = ?
+    GROUP BY category
   `).all(req.params.eventId);
-  res.json(students);
+
+  res.json({ students, categoryStats: stats });
 });
 
 // Add single student
