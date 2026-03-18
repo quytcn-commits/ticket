@@ -296,19 +296,64 @@ var EVENT_ID = 1; // ← Đổi thành ID sự kiện của bạn
 
 function onFormSubmit(e) {
   var row = e.values;
-  // Điều chỉnh index theo đúng cột trong Sheet của bạn:
+
   // row[0] = Timestamp
-  // row[1] = Họ và tên
-  // row[2] = Email
-  // row[3] = MSSV
-  // row[4] = Trường
+  // row[1] = Đơn vị (Fulbright / Văn hóa / Khác)
+  var donVi = row[1] || "";
+
+  var name = "";
+  var email = "";
+  var phone = "";
+  var school = donVi;
+  var studentCode = "";
+
+  if (donVi.indexOf("Fulbright") > -1) {
+    // Nhánh Fulbright: cột C-H (index 2-7)
+    name = row[2];
+    email = row[3];
+    phone = row[4];
+    school = "ĐH Fulbright Việt Nam";
+    studentCode = (email || "").split("@")[0]; // Dùng email prefix làm mã
+  } else if (donVi.indexOf("Văn hóa") > -1) {
+    // Nhánh Văn hóa: cột I-O (index 8-14)
+    name = row[8];
+    email = row[9];
+    phone = row[10];
+    school = "ĐH Văn hóa TPHCM";
+    studentCode = row[12] || (email || "").split("@")[0]; // MSSV hoặc email prefix
+  } else {
+    // Nhánh Khác: cột P-V (index 15-21)
+    name = row[15];
+    email = row[16];
+    phone = row[17];
+    var chucVu = row[20] || "";
+    var coQuan = row[21] || "";
+    school = coQuan || chucVu || "Khác";
+    studentCode = (email || "").split("@")[0];
+  }
+
+  // Fallback: dùng Email Address (cột cuối) nếu email trống
+  if (!email && row[22]) email = row[22];
+
+  // Bỏ qua nếu thiếu thông tin
+  if (!name || !email) {
+    Logger.log("Skipped: missing name or email");
+    return;
+  }
+
+  // Đảm bảo studentCode không rỗng
+  if (!studentCode || studentCode === "Không có") {
+    studentCode = email.split("@")[0];
+  }
+
   var payload = {
     secret: WEBHOOK_SECRET,
     event_id: EVENT_ID,
-    name: row[1],
-    email: row[2],
-    student_code: row[3],
-    school: row[4] || ""
+    name: name.trim(),
+    email: email.trim(),
+    student_code: studentCode.trim(),
+    school: school.trim(),
+    phone: (phone || "").trim()
   };
 
   var options = {
@@ -320,7 +365,7 @@ function onFormSubmit(e) {
 
   try {
     var response = UrlFetchApp.fetch(WEBHOOK_URL, options);
-    Logger.log("Webhook response: " + response.getContentText());
+    Logger.log("Webhook OK: " + name + " | " + response.getContentText());
   } catch (err) {
     Logger.log("Webhook error: " + err.message);
   }
