@@ -180,10 +180,23 @@ async function syncSheet(eventId) {
 
       // Check if already exists (by email to avoid duplicates)
       const existing = db.prepare(
-        'SELECT id FROM students WHERE event_id = ? AND (student_code = ? OR email = ?)'
+        'SELECT id, category FROM students WHERE event_id = ? AND (student_code = ? OR email = ?)'
       ).get(eventId, student.student_code, student.email);
 
-      if (existing) { skipped++; continue; }
+      if (existing) {
+        // Update category + metadata if changed
+        db.prepare(`
+          UPDATE students SET category = ?, phone = ?, position = ?, organization = ?,
+            mssv = ?, program = ?, image_consent = ?, relationship = ?, school = ?
+          WHERE id = ?
+        `).run(
+          student.category, student.phone, student.position, student.organization,
+          student.mssv, student.program, student.image_consent, student.relationship,
+          student.school, existing.id
+        );
+        skipped++;
+        continue;
+      }
 
       // Insert student with full data
       const result = db.prepare(`
