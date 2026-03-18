@@ -158,6 +158,9 @@ export default function EventDetailPage() {
         </div>
       </div>
 
+      {/* Google Sheet Sync */}
+      <SheetSyncPanel eventId={id} />
+
       {/* Actions */}
       <div className="flex flex-wrap gap-3 mb-6">
         <label className={`bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 cursor-pointer text-sm ${importing ? 'opacity-50' : ''}`}>
@@ -248,6 +251,123 @@ export default function EventDetailPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SheetSyncPanel({ eventId }) {
+  const [config, setConfig] = useState({ sheet_url: '', sync_interval: 2, auto_sync: false, last_sync: null });
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    api.get(`/sheetsync/${eventId}`).then(res => {
+      setConfig(res.data);
+      if (res.data.sheet_url) setExpanded(true);
+    }).catch(() => {});
+  }, [eventId]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await api.post(`/sheetsync/${eventId}`, config);
+    setSaving(false);
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await api.post(`/sheetsync/${eventId}/sync`);
+      setSyncResult(res.data);
+      // Reload parent
+      window.location.reload();
+    } catch (err) {
+      setSyncResult({ error: err.response?.data?.error || 'Sync failed' });
+    }
+    setSyncing(false);
+  };
+
+  const handleToggleAutoSync = async () => {
+    const newVal = !config.auto_sync;
+    setConfig({ ...config, auto_sync: newVal });
+    await api.post(`/sheetsync/${eventId}`, { ...config, auto_sync: newVal });
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow p-5 mb-6">
+      <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpanded(!expanded)}>
+        <h3 className="font-semibold">Google Sheets Sync</h3>
+        <div className="flex items-center gap-3">
+          {config.auto_sync && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Auto-sync ON</span>}
+          {config.last_sync && <span className="text-xs text-gray-400">Sync: {config.last_sync}</span>}
+          <span className="text-gray-400">{expanded ? '▲' : '▼'}</span>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Google Sheet URL</label>
+            <input
+              type="text"
+              value={config.sheet_url}
+              onChange={e => setConfig({ ...config, sheet_url: e.target.value })}
+              placeholder="https://docs.google.com/spreadsheets/d/xxx..."
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-xs text-gray-400 mt-1">Sheet phải được Publish to web (File → Share → Publish to web)</p>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Poll mỗi (phút)</label>
+              <input
+                type="number"
+                min="1"
+                max="60"
+                value={config.sync_interval}
+                onChange={e => setConfig({ ...config, sync_interval: parseInt(e.target.value) || 2 })}
+                className="w-24 border rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div className="pt-5">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.auto_sync}
+                  onChange={handleToggleAutoSync}
+                  className="w-4 h-4 rounded"
+                />
+                <span className="text-sm">Tự động đồng bộ</span>
+              </label>
+            </div>
+
+            <div className="pt-5">
+              <button onClick={handleSave} disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
+                {saving ? '...' : 'Lưu'}
+              </button>
+            </div>
+
+            <div className="pt-5">
+              <button onClick={handleSync} disabled={syncing} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
+                {syncing ? 'Đang sync...' : 'Sync ngay'}
+              </button>
+            </div>
+          </div>
+
+          {syncResult && (
+            <div className={`p-3 rounded-lg text-sm ${syncResult.error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+              {syncResult.error
+                ? syncResult.error
+                : `Đồng bộ xong: ${syncResult.synced} SV mới, ${syncResult.skipped} đã có`
+              }
+            </div>
+          )}
         </div>
       )}
     </div>

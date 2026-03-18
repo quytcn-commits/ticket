@@ -1,0 +1,243 @@
+const https = require('https');
+const http = require('http');
+const db = require('../db/connection');
+const { generateToken, generateQRBuffer } = require('./qrService');
+const { sendQREmail } = require('./emailService');
+
+let syncInterval = null;
+
+/**
+ * Fetch CSV from a URL, following redirects
+ */
+function fetchCSV(url) {
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith('https') ? https : http;
+    client.get(url, { headers: { 'User-Agent': 'QR-Checkin-Server' } }, (res) => {
+      // Follow redirects
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return fetchCSV(res.headers.location).then(resolve).catch(reject);
+      }
+      if (res.statusCode !== 200) {
+        return reject(new Error(`HTTP ${res.statusCode}`));
+      }
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve(data));
+    }).on('error', reject);
+  });
+}
+
+/**
+ * Parse CSV string into array of rows
+ */
+function parseCSV(csv) {
+  const rows = [];
+  let current = '';
+  let inQuotes = false;
+  const lines = [];
+
+  // Split into lines respecting quoted fields
+  for (let i = 0; i < csv.length; i++) {
+    const char = csv[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      current += char;
+    } else if (char === '\n' && !inQuotes) {
+      lines.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim()) lines.push(current.trim());
+
+  // Parse each line into fields
+  for (const line of lines) {
+    if (!line) continue;
+    const fields = [];
+    let field = '';
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inQ && line[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQ = !inQ;
+        }
+      } else if (c === ',' && !inQ) {
+        fields.push(field);
+        field = '';
+      } else {
+        field += c;
+      }
+    }
+    fields.push(field);
+    rows.push(fields);
+  }
+
+  return rows;
+}
+
+/**
+ * Extract student info from a row based on "đơn vị" (column B)
+ * Adapted to the specific Google Sheet structure
+ */
+function extractStudent(row) {
+  const donVi = (row[1] || '').trim();
+  let name = '', email = '', phone = '', school = donVi, studentCode = '';
+
+  if (donVi.includes('Fulbright')) {
+    name = row[2] || '';
+    email = row[3] || '';
+    phone = row[4] || '';
+    school = 'ĐH Fulbright Việt Nam';
+    studentCode = email ? email.split('@')[0] : '';
+  } else if (donVi.includes('Văn hóa')) {
+    name = row[8] || '';
+    email = row[9] || '';
+    phone = row[10] || '';
+    school = 'ĐH Văn hóa TPHCM';
+    studentCode = row[12] || '';
+    if (!studentCode || studentCode === 'Không có') {
+      studentCode = email ? email.split('@')[0] : '';
+    }
+  } else {
+    // Khác
+    name = row[15] || '';
+    email = row[16] || '';
+    phone = row[17] || '';
+    const chucVu = row[20] || '';
+    const coQuan = row[21] || '';
+    school = coQuan || chucVu || 'Khác';
+    studentCode = email ? email.split('@')[0] : '';
+  }
+
+  // Fallback email from last column
+  if (!email && row[22]) email = row[22];
+
+  name = name.trim();
+  email = email.trim();
+  studentCode = studentCode.trim();
+  school = school.trim();
+
+  if (!name || !email || !studentCode) return null;
+
+  return { name, email, phone: (phone || '').trim(), school, student_code: studentCode };
+}
+
+/**
+ * Sync one event's Google Sheet
+ */
+async function syncSheet(eventId) {
+  const sheetUrl = db.prepare("SELECT value FROM settings WHERE key = ?")
+    .get(`event_${eventId}_sheet_url`);
+
+  if (!sheetUrl || !sheetUrl.value) return { synced: 0, skipped: 0, errors: [] };
+
+  // Convert to CSV export URL
+  let csvUrl = sheetUrl.value;
+  // Handle various Google Sheets URL formats
+  const match = csvUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (match) {
+    csvUrl = `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv&gid=0`;
+  }
+
+  console.log(`[SheetSync] Fetching: ${csvUrl}`);
+
+  const csv = await fetchCSV(csvUrl);
+  const rows = parseCSV(csv);
+
+  if (rows.length < 2) return { synced: 0, skipped: 0, errors: [] };
+
+  // Skip header row
+  const dataRows = rows.slice(1);
+  let synced = 0, skipped = 0;
+  const errors = [];
+
+  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
+  if (!event) return { synced: 0, skipped: 0, errors: ['Event not found'] };
+
+  for (const row of dataRows) {
+    try {
+      const student = extractStudent(row);
+      if (!student) { skipped++; continue; }
+
+      // Check if already exists (by email to avoid duplicates)
+      const existing = db.prepare(
+        'SELECT id FROM students WHERE event_id = ? AND (student_code = ? OR email = ?)'
+      ).get(eventId, student.student_code, student.email);
+
+      if (existing) { skipped++; continue; }
+
+      // Insert student
+      const result = db.prepare(
+        'INSERT INTO students (event_id, student_code, name, email, school, qr_token) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(eventId, student.student_code, student.name, student.email, student.school, 'temp');
+
+      const studentId = result.lastInsertRowid;
+      const token = generateToken(eventId, studentId, student.student_code);
+      db.prepare('UPDATE students SET qr_token = ? WHERE id = ?').run(token, studentId);
+
+      // Send QR email
+      try {
+        const studentRow = db.prepare('SELECT * FROM students WHERE id = ?').get(studentId);
+        const qrBuffer = await generateQRBuffer(token);
+        await sendQREmail(studentRow, event.name, qrBuffer);
+        console.log(`[SheetSync] ✓ ${student.name} (${student.email}) → QR sent`);
+      } catch (emailErr) {
+        console.log(`[SheetSync] ✓ ${student.name} registered, email failed: ${emailErr.message}`);
+      }
+
+      synced++;
+    } catch (err) {
+      errors.push(err.message);
+    }
+  }
+
+  console.log(`[SheetSync] Event ${eventId}: synced=${synced}, skipped=${skipped}, errors=${errors.length}`);
+  return { synced, skipped, errors };
+}
+
+/**
+ * Start auto-sync polling
+ */
+function startAutoSync(intervalMinutes = 2) {
+  if (syncInterval) clearInterval(syncInterval);
+
+  const run = async () => {
+    // Find all events with sheet URLs configured
+    const settings = db.prepare(
+      "SELECT key, value FROM settings WHERE key LIKE 'event_%_sheet_url' AND value != ''"
+    ).all();
+
+    for (const s of settings) {
+      const eventId = s.key.match(/event_(\d+)_sheet_url/)?.[1];
+      if (eventId) {
+        try {
+          await syncSheet(parseInt(eventId));
+        } catch (err) {
+          console.error(`[SheetSync] Error syncing event ${eventId}:`, err.message);
+        }
+      }
+    }
+  };
+
+  // Run immediately on start
+  run();
+
+  // Then poll every X minutes
+  syncInterval = setInterval(run, intervalMinutes * 60 * 1000);
+  console.log(`[SheetSync] Auto-sync started (every ${intervalMinutes} min)`);
+}
+
+function stopAutoSync() {
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+    console.log('[SheetSync] Auto-sync stopped');
+  }
+}
+
+module.exports = { syncSheet, startAutoSync, stopAutoSync };

@@ -4,7 +4,7 @@ const path = require('path');
 const config = require('./config');
 
 // Initialize DB (runs schema + seed)
-require('./db/connection');
+const db = require('./db/connection');
 
 const app = express();
 
@@ -19,6 +19,7 @@ app.use('/api/staffs', require('./routes/staffs'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/qr', require('./routes/qr'));
 app.use('/api/webhook', require('./routes/webhook'));
+app.use('/api/sheetsync', require('./routes/sheetsync'));
 app.use('/api/checkin', require('./routes/checkin'));
 app.use('/api/reports', require('./routes/reports'));
 
@@ -41,4 +42,13 @@ app.get('*', (req, res) => {
 
 app.listen(config.PORT, () => {
   console.log(`Server running on http://localhost:${config.PORT}`);
+
+  // Start Google Sheets auto-sync if configured
+  const { startAutoSync } = require('./services/sheetSyncService');
+  const hasSheets = db.prepare(
+    "SELECT key FROM settings WHERE key LIKE 'event_%_auto_sync' AND value = '1' LIMIT 1"
+  ).get();
+  if (hasSheets) {
+    startAutoSync(2);
+  }
 });
